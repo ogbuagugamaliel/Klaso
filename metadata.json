@@ -1,0 +1,8 @@
+{
+  "name": "Klaso School Operating System",
+  "description": "An all-in-one School Operating System built specifically for African schools, enabling administrators, teachers, students, and parents to manage attendance, academics, finances, report cards, and school operations from a single secure platform.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

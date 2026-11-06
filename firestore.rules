@@ -1,0 +1,240 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Retreives the logged in user's profile
+    function getProfile() {
+      return get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data;
+    }
+
+    // Checks valid alphanumeric string IDs to prevent Resource Poisoning
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Validates if the current user has access to a specific class.
+    // Admins can access any class in their school.
+    // Teachers can only access classes assigned to them via class_teachers.
+    function canAccessClass(classId, schoolId) {
+      return isSignedIn() &&
+             getProfile().school_id == schoolId &&
+             (
+               getProfile().role == "admin" ||
+               exists(/databases/$(database)/documents/class_teachers/$(classId)_$(request.auth.uid))
+             );
+    }
+
+    // SCHOOL RULES
+    match /schools/{schoolId} {
+      // Anyone can read school names and IDs for school-based registration layout selection
+      allow read: if true;
+      
+      // Allow any signed-in user to create a school (Bootstrapping / Multi-school creation)
+      allow create: if isSignedIn() &&
+                    request.resource.data.name is string &&
+                    request.resource.data.name.size() > 0 &&
+                    request.resource.data.name.size() <= 100;
+                    
+      allow update: if isSignedIn() &&
+                    getProfile().school_id == schoolId &&
+                    getProfile().role == "admin" &&
+                    request.resource.data.name is string &&
+                    request.resource.data.name.size() > 0 &&
+                    request.resource.data.name.size() <= 100;
+                    
+      allow delete: if false; // Schools cannot be deleted via client SDK
+    }
+
+    // USER PROFILE RULES
+    match /profiles/{userId} {
+      allow read: if isSignedIn() && (
+        request.auth.uid == userId ||
+        getProfile().school_id == resource.data.school_id
+      );
+
+      // Anyone signed in can create their own profile (for new signup / admin creation)
+      // or an Admin can create profiles for teachers in their school.
+      allow create: if isSignedIn() && (
+        request.auth.uid == userId ||
+        (getProfile().role == "admin" && getProfile().school_id == request.resource.data.school_id)
+      ) &&
+      request.resource.data.school_id is string &&
+      request.resource.data.full_name is string &&
+      request.resource.data.full_name.size() > 0 &&
+      request.resource.data.full_name.size() <= 150 &&
+      request.resource.data.email is string &&
+      request.resource.data.role in ["admin", "teacher"];
+
+      // Users can update their own names, but only school admins can change Roles or School ID.
+      allow update: if isSignedIn() && (
+        (request.auth.uid == userId && 
+         request.resource.data.role == resource.data.role && 
+         request.resource.data.school_id == resource.data.school_id) ||
+        (getProfile().role == "admin" && getProfile().school_id == resource.data.school_id)
+      ) &&
+      request.resource.data.full_name is string &&
+      request.resource.data.full_name.size() > 0 &&
+      request.resource.data.full_name.size() <= 150;
+
+      allow delete: if isSignedIn() &&
+                    getProfile().school_id == resource.data.school_id &&
+                    getProfile().role == "admin";
+    }
+
+    // CLASSES RULES
+    match /classes/{classId} {
+      allow read: if canAccessClass(classId, resource.data.school_id);
+      
+      allow create: if isSignedIn() &&
+                    getProfile().role == "admin" &&
+                    getProfile().school_id == request.resource.data.school_id &&
+                    request.resource.data.name is string &&
+                    request.resource.data.name.size() > 0 &&
+                    request.resource.data.name.size() <= 50;
+
+      allow update: if isSignedIn() &&
+                    getProfile().role == "admin" &&
+                    getProfile().school_id == resource.data.school_id &&
+                    request.resource.data.school_id == resource.data.school_id &&
+                    request.resource.data.name is string &&
+                    request.resource.data.name.size() > 0 &&
+                    request.resource.data.name.size() <= 50;
+
+      allow delete: if isSignedIn() &&
+                    getProfile().role == "admin" &&
+                    getProfile().school_id == resource.data.school_id;
+    }
+
+    // TEACHER TO CLASS ASSIGNMENTS
+    match /class_teachers/{assignmentId} {
+      allow read: if isSignedIn() &&
+                    getProfile().school_id == resource.data.school_id;
+
+      allow create: if isSignedIn() &&
+                    getProfile().role == "admin" &&
+                    getProfile().school_id == request.resource.data.school_id &&
+                    request.resource.data.class_id is string &&
+                    request.resource.data.teacher_id is string;
+
+      allow update: if false; // Assignments cannot be modified, only created or deleted
+
+      allow delete: if isSignedIn() &&
+                    getProfile().role == "admin" &&
+                    getProfile().school_id == resource.data.school_id;
+    }
+
+    // STUDENTS RULES
+    match /students/{studentId} {
+      allow read: if isSignedIn() &&
+                  canAccessClass(resource.data.class_id, resource.data.school_id);
+
+      allow create: if isSignedIn() &&
+                    getProfile().role == "admin" &&
+                    getProfile().school_id == request.resource.data.school_id &&
+                    request.resource.data.class_id is string &&
+                    request.resource.data.name is string &&
+                    request.resource.data.name.size() > 0 &&
+                    request.resource.data.name.size() <= 150 &&
+                    request.resource.data.code is string &&
+                    request.resource.data.code.size() > 0 &&
+                    request.resource.data.code.size() <= 50;
+
+      allow update: if isSignedIn() &&
+                    getProfile().role == "admin" &&
+                    getProfile().school_id == resource.data.school_id &&
+                    request.resource.data.class_id is string &&
+                    request.resource.data.name is string &&
+                    request.resource.data.name.size() > 0 &&
+                    request.resource.data.name.size() <= 150 &&
+                    request.resource.data.code is string &&
+                    request.resource.data.code.size() > 0 &&
+                    request.resource.data.code.size() <= 50;
+
+      allow delete: if isSignedIn() &&
+                    getProfile().role == "admin" &&
+                    getProfile().school_id == resource.data.school_id;
+    }
+
+        // ATTENDANCE RECORDS
+    match /attendance_records/{recordId} {
+      allow read: if isSignedIn() &&
+                  canAccessClass(resource.data.class_id, resource.data.school_id);
+
+      allow create: if isSignedIn() &&
+                    canAccessClass(request.resource.data.class_id, request.resource.data.school_id) &&
+                    request.resource.data.student_id is string &&
+                    request.resource.data.term is string &&
+                    request.resource.data.date is string &&
+                    request.resource.data.status in ["early", "late"] &&
+                    request.resource.data.marked_by == request.auth.uid;
+
+      allow update: if isSignedIn() &&
+                    canAccessClass(resource.data.class_id, resource.data.school_id) &&
+                    request.resource.data.class_id == resource.data.class_id &&
+                    request.resource.data.school_id == resource.data.school_id &&
+                    request.resource.data.student_id == resource.data.student_id &&
+                    request.resource.data.term == resource.data.term &&
+                    request.resource.data.date == resource.data.date &&
+                    request.resource.data.status in ["early", "late"] &&
+                    request.resource.data.marked_by == request.auth.uid;
+
+      allow delete: if isSignedIn() &&
+                    getProfile().role == "admin" &&
+                    getProfile().school_id == resource.data.school_id;
+    }
+
+    // SUBJECTS RULES
+    match /subjects/{subjectId} {
+      allow read: if isSignedIn() &&
+                    getProfile().school_id == resource.data.school_id;
+      allow create: if isSignedIn() &&
+                    getProfile().school_id == request.resource.data.school_id &&
+                    request.resource.data.name is string &&
+                    request.resource.data.name.size() > 0;
+      allow update: if isSignedIn() &&
+                    getProfile().school_id == resource.data.school_id &&
+                    request.resource.data.name is string &&
+                    request.resource.data.name.size() > 0;
+      allow delete: if isSignedIn() &&
+                    getProfile().school_id == resource.data.school_id;
+    }
+
+    // ASSESSMENT_CONFIGS RULES
+    match /assessment_configs/{configId} {
+      allow read: if isSignedIn() &&
+                    getProfile().school_id == resource.data.school_id;
+      allow create: if isSignedIn() &&
+                    getProfile().school_id == request.resource.data.school_id &&
+                    request.resource.data.name is string &&
+                    request.resource.data.name.size() > 0;
+      allow update: if isSignedIn() &&
+                    getProfile().school_id == resource.data.school_id &&
+                    request.resource.data.name is string &&
+                    request.resource.data.name.size() > 0;
+      allow delete: if isSignedIn() &&
+                    getProfile().school_id == resource.data.school_id;
+    }
+
+    // STUDENT_SCORES RULES
+    match /student_scores/{scoreId} {
+      allow read: if isSignedIn() &&
+                    getProfile().school_id == resource.data.school_id;
+      allow create: if isSignedIn() &&
+                    getProfile().school_id == request.resource.data.school_id;
+      allow update: if isSignedIn() &&
+                    getProfile().school_id == resource.data.school_id;
+      allow delete: if isSignedIn() &&
+                    getProfile().school_id == resource.data.school_id;
+    }
+  }
+}

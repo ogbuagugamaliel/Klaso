@@ -1,0 +1,115 @@
+{
+  "entities": {
+    "school": {
+      "title": "School",
+      "description": "Represents a school organization",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "address": { "type": "string" },
+        "phone": { "type": "string" },
+        "contactEmail": { "type": "string" },
+        "terms": { "type": "array" },
+        "paymentStatus": { "type": "object" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "contactEmail"]
+    },
+    "profile": {
+      "title": "Profile",
+      "description": "Represents a user profile (Admin or Teacher) inside a school",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "school_id": { "type": "string" },
+        "full_name": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "teacher"] },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["school_id", "full_name", "email", "role"]
+    },
+    "class": {
+      "title": "Class",
+      "description": "Represents a class room inside a school",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "school_id": { "type": "string" },
+        "name": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["school_id", "name"]
+    },
+    "class_teacher": {
+      "title": "Class Teacher Assignment",
+      "description": "Many-to-many relationship mapping teachers to classes",
+      "type": "object",
+      "properties": {
+        "class_id": { "type": "string" },
+        "teacher_id": { "type": "string" },
+        "school_id": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["class_id", "teacher_id", "school_id"]
+    },
+    "student": {
+      "title": "Student",
+      "description": "Represents a student in a class within a school",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "school_id": { "type": "string" },
+        "class_id": { "type": "string" },
+        "name": { "type": "string" },
+        "code": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["school_id", "class_id", "name", "code"]
+    },
+    "attendance_record": {
+      "title": "Attendance Record",
+      "description": "An attendance entry for a student on a specific date for a specific term",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "school_id": { "type": "string" },
+        "class_id": { "type": "string" },
+        "student_id": { "type": "string" },
+        "term": { "type": "string" },
+        "date": { "type": "string" },
+        "status": { "type": "string", "enum": ["early", "late"] },
+        "marked_by": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["school_id", "class_id", "student_id", "term", "date", "status", "marked_by"]
+    }
+  },
+  "firestore": {
+    "/schools/{schoolId}": {
+      "schema": "school",
+      "description": "Global schools parameters"
+    },
+    "/profiles/{userId}": {
+      "schema": "profile",
+      "description": "User profile with role"
+    },
+    "/classes/{classId}": {
+      "schema": "class",
+      "description": "Classes inside schools"
+    },
+    "/class_teachers/{assignmentId}": {
+      "schema": "class_teacher",
+      "description": "Assignments of teachers to classes"
+    },
+    "/students/{studentId}": {
+      "schema": "student",
+      "description": "Students list mapped to classes"
+    },
+    "/attendance_records/{recordId}": {
+      "schema": "attendance_record",
+      "description": "Daily attendance logs"
+    }
+  }
+}
